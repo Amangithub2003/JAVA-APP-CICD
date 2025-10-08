@@ -1,18 +1,18 @@
 pipeline {
     agent any
-    
+
     environment {
         DOCKER_IMAGE = "amandock8252/java-app"
         DOCKER_TAG = "${BUILD_NUMBER}"
         SONAR_PROJECT_KEY = "java-app"
         SONAR_AUTH_TOKEN = credentials('sonarqube-token')
     }
-    
+
     tools {
         maven 'Maven-3.9'
         jdk 'JDK-17'
     }
-    
+
     stages {
         stage('Checkout') {
             steps {
