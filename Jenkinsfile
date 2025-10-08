@@ -1,19 +1,18 @@
 pipeline {
     agent any
-
+    
     environment {
         DOCKER_IMAGE = "amandock8252/java-app"
         DOCKER_TAG = "${BUILD_NUMBER}"
         SONAR_PROJECT_KEY = "java-app"
         SONAR_AUTH_TOKEN = credentials('sonarqube-token')
-        DOCKERHUB_CREDENTIALS = 'dockerhub-credentials'
     }
-
+    
     tools {
         maven 'Maven-3.9'
         jdk 'JDK-17'
     }
-
+    
     stages {
         stage('Checkout') {
             steps {
@@ -81,22 +80,10 @@ pipeline {
             }
         }
 
-        // 🔸 Trivy stage skipped for now (can re-enable later)
-        /*
-        stage('Image Scanning - Trivy') {
-            steps {
-                script {
-                    echo "⚠️ Skipping Trivy image scan (temporarily disabled to avoid timeout)"
-                    // docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --severity HIGH,CRITICAL ${DOCKER_IMAGE}:${DOCKER_TAG}
-                }
-            }
-        }
-        */
-
         stage('Push to DockerHub') {
             steps {
                 script {
-                    docker.withRegistry('https://registry.hub.docker.com', DOCKERHUB_CREDENTIALS) {
+                    docker.withRegistry('https://registry.hub.docker.com', 'dockerhub-credentials') {
                         docker.image("${DOCKER_IMAGE}:${DOCKER_TAG}").push()
                         docker.image("${DOCKER_IMAGE}:latest").push()
                     }
@@ -106,11 +93,12 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             steps {
-                script {
+                withCredentials([file(credentialsId: 'kubeconfig-credentials', variable: 'KUBECONFIG')]) {
                     sh '''
+                        echo "✅ Using kubeconfig from Jenkins credentials"
                         sed -i "s|image:.*|image: ${DOCKER_IMAGE}:${DOCKER_TAG}|g" k8s/deployment.yaml
-                        kubectl apply -f k8s/deployment.yaml
-                        kubectl apply -f k8s/service.yaml
+                        kubectl apply -f k8s/deployment.yaml --validate=false
+                        kubectl apply -f k8s/service.yaml --validate=false
                         kubectl rollout status deployment/java-app
                     '''
                 }
