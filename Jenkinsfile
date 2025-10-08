@@ -96,14 +96,17 @@ pipeline {
                 withCredentials([file(credentialsId: 'kubeconfig-credentials', variable: 'KUBECONFIG')]) {
                     sh '''
                         echo "✅ Using kubeconfig from Jenkins credentials"
-                        
-                        # Update deployment image safely without editing YAML
+
+                        # Export kubeconfig so kubectl uses it
+                        export KUBECONFIG=${KUBECONFIG}
+
+                        # Update deployment image safely
                         kubectl set image deployment/java-app java-app=${DOCKER_IMAGE}:${DOCKER_TAG} --record
-                        
-                        # Apply service manifest (only needed once or when changed)
+
+                        # Apply service manifest
                         kubectl apply -f k8s/service.yaml --validate=false
-                        
-                        # Wait for deployment rollout to finish
+
+                        # Wait for deployment rollout
                         kubectl rollout status deployment/java-app
                     '''
                 }
