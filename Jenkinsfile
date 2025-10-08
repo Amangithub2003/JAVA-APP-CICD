@@ -5,6 +5,7 @@ pipeline {
         DOCKER_IMAGE = "amandock8252/java-app"
         DOCKER_TAG = "${BUILD_NUMBER}"
         SONAR_PROJECT_KEY = "java-app"
+        SONAR_AUTH_TOKEN = credentials('sonarqube-token')
     }
     
     tools {
@@ -19,13 +20,13 @@ pipeline {
                     url: 'https://github.com/Amangithub2003/JAVA-APP-CICD.git'
             }
         }
-        
+
         stage('Build') {
             steps {
                 sh 'mvn clean package -DskipTests'
             }
         }
-        
+
         stage('Unit Tests') {
             steps {
                 sh 'mvn test'
@@ -36,19 +37,20 @@ pipeline {
                 }
             }
         }
-        
+
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('SonarQube') {
                     sh '''
                         mvn sonar:sonar \
                         -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
-                        -Dsonar.host.url=http://localhost:9000
+                        -Dsonar.host.url=http://localhost:9000 \
+                        -Dsonar.login=${SONAR_AUTH_TOKEN}
                     '''
                 }
             }
         }
-        
+
         stage('Quality Gate') {
             steps {
                 timeout(time: 5, unit: 'MINUTES') {
@@ -56,7 +58,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Build Docker Image') {
             steps {
                 script {
@@ -65,7 +67,7 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Image Scanning - Trivy') {
             steps {
                 sh '''
@@ -77,12 +79,12 @@ pipeline {
                         sudo apt-get install trivy -y
                     fi
                     
-                    # Scan image
+                    # Scan image for HIGH and CRITICAL vulnerabilities
                     trivy image --severity HIGH,CRITICAL ${DOCKER_IMAGE}:${DOCKER_TAG}
                 '''
             }
         }
-        
+
         stage('Push to DockerHub') {
             steps {
                 script {
@@ -93,32 +95,32 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Deploy to Kubernetes') {
             steps {
                 script {
                     sh '''
-                        # Update image tag in deployment
+                        # Update image tag in deployment manifest
                         sed -i "s|image:.*|image: ${DOCKER_IMAGE}:${DOCKER_TAG}|g" k8s/deployment.yaml
                         
                         # Apply Kubernetes manifests
                         kubectl apply -f k8s/deployment.yaml
                         kubectl apply -f k8s/service.yaml
                         
-                        # Wait for rollout
+                        # Wait for deployment rollout
                         kubectl rollout status deployment/java-app
                     '''
                 }
             }
         }
     }
-    
+
     post {
         success {
-            echo 'Pipeline executed successfully!'
+            echo '✅ Pipeline executed successfully!'
         }
         failure {
-            echo 'Pipeline failed!'
+            echo '❌ Pipeline failed!'
         }
         always {
             cleanWs()
