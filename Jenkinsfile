@@ -60,7 +60,6 @@ pipeline {
             steps {
                 script {
                     try {
-                        // Wait for Quality Gate with a reasonable timeout
                         timeout(time: 3, unit: 'MINUTES') {
                             def qg = waitForQualityGate abortPipeline: true
                             echo "✅ SonarQube Quality Gate status: ${qg.status}"
@@ -83,15 +82,13 @@ pipeline {
 
         stage('Image Scanning - Trivy') {
             steps {
-                sh '''
-                    if ! command -v trivy &> /dev/null; then
-                        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-                        echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
-                        sudo apt-get update
-                        sudo apt-get install trivy -y
-                    fi
-                    trivy image --severity HIGH,CRITICAL ${DOCKER_IMAGE}:${DOCKER_TAG}
-                '''
+                script {
+                    sh """
+                        docker run --rm \
+                        -v /var/run/docker.sock:/var/run/docker.sock \
+                        aquasec/trivy image --severity HIGH,CRITICAL ${DOCKER_IMAGE}:${DOCKER_TAG}
+                    """
+                }
             }
         }
 
