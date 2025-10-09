@@ -75,7 +75,7 @@ pipeline {
             steps {
                 script {
                     sh '''
-                        echo "🐳 Building Docker image inside Minikube environment..."
+                        echo "🐳 Building Docker image inside Minikube..."
                         eval $(minikube -p minikube docker-env)
                         docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
                         docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
@@ -103,9 +103,9 @@ pipeline {
             steps {
                 script {
                     sh '''
-                        echo "✅ Deploying ${DOCKER_IMAGE}:${DOCKER_TAG} to Kubernetes using Minikube"
+                        echo "✅ Deploying ${DOCKER_IMAGE}:${DOCKER_TAG} to Kubernetes"
 
-                        # Auto-start Minikube if profile not found or not running
+                        # Start Minikube if profile missing or not running
                         if ! minikube profile list | grep -q "minikube"; then
                             echo "⚙️ Minikube profile not found. Starting Minikube..."
                             minikube start --driver=docker --profile=minikube
@@ -114,20 +114,13 @@ pipeline {
                             minikube start --driver=docker --profile=minikube
                         fi
 
-                        # Set Docker environment to Minikube
+                        # Docker env for Minikube
                         eval $(minikube -p minikube docker-env)
 
-                        # Apply manifests
-                        echo "🚀 Applying Kubernetes manifests..."
+                        # Apply manifests and set image
                         minikube kubectl -- apply -f k8s/deployment.yaml --validate=false
                         minikube kubectl -- apply -f k8s/service.yaml --validate=false
-
-                        # Update deployment image
-                        echo "🔁 Updating deployment image..."
                         minikube kubectl -- set image deployment/java-app java-app=${DOCKER_IMAGE}:${DOCKER_TAG} --record
-
-                        # Wait for rollout to complete
-                        echo "⏳ Waiting for rollout to complete..."
                         minikube kubectl -- rollout status deployment/java-app
 
                         echo "✅ Deployment successful!"

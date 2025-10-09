@@ -2,14 +2,12 @@ apiVersion: v1
 kind: Service
 metadata:
   name: java-app-service
-  labels:
-    app: java-app
 spec:
   type: NodePort
   selector:
     app: java-app
   ports:
     - protocol: TCP
-      port: 8080
-      targetPort: 8080
-      nodePort: 30080
+      port: 8081        # Service port
+      targetPort: 8081  # Match container port
+      nodePort: 30400   # <-- free port

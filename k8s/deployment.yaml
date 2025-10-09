@@ -1,42 +1,13 @@
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: v1
+kind: Service
 metadata:
-  name: java-app
-  labels:
-    app: java-app
+  name: java-app-service
 spec:
-  replicas: 2
+  type: NodePort
   selector:
-    matchLabels:
-      app: java-app
-  template:
-    metadata:
-      labels:
-        app: java-app
-    spec:
-      containers:
-        - name: java-app
-          # 👇 Jenkins dynamically replaces this line during deployment
-          image: java-app:latest
-          ports:
-            - containerPort: 8080
-          livenessProbe:
-            httpGet:
-              path: /actuator/health
-              port: 8080
-            initialDelaySeconds: 30
-            periodSeconds: 10
-          readinessProbe:
-            httpGet:
-              path: /actuator/health
-              port: 8080
-            initialDelaySeconds: 20
-            periodSeconds: 5
-          resources:
-            requests:
-              memory: "256Mi"
-              cpu: "250m"
-            limits:
-              memory: "512Mi"
-              cpu: "500m"
-      restartPolicy: Always
+    app: java-app
+  ports:
+    - protocol: TCP
+      port: 8081
+      targetPort: 8081
+      nodePort: 30400
