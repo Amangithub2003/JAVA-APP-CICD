@@ -112,15 +112,13 @@ pipeline {
                             kubectl apply -f k8s/deployment.yaml --validate=false
                             kubectl apply -f k8s/service.yaml --validate=false
 
-                            # Update deployment image
+                            # Update deployment image from DockerHub
                             kubectl set image deployment/java-app java-app=${DOCKER_IMAGE}:${DOCKER_TAG} --record
 
                             # Wait for rollout
                             kubectl rollout status deployment/java-app
 
-                            # Print NodePort URL
-                            echo "🚀 App should be available at:"
-                            kubectl get svc java-app-service -o jsonpath='{.spec.clusterIP}{"\n"}'
+                            echo "🚀 Deployment successful!"
                         '''
                     }
                 }
