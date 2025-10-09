@@ -6,7 +6,7 @@ pipeline {
         DOCKER_TAG = "${BUILD_NUMBER}"
         SONAR_PROJECT_KEY = "java-app"
         SONAR_AUTH_TOKEN = credentials('sonarqube-token')
-        KUBECONFIG_CRED = 'kubeconfig'
+        KUBECONFIG_CRED = 'kubeconfig-credentials' // Updated ID from Jenkins
     }
 
     tools {
@@ -96,11 +96,17 @@ pipeline {
             steps {
                 withCredentials([file(credentialsId: "${KUBECONFIG_CRED}", variable: 'KUBECONFIG')]) {
                     sh """
-                        echo "🚀 Deploying to Kubernetes..."
+                        echo "🚀 Deploying to Kubernetes using Minikube API server..."
+                        # Apply deployment and service manifests
                         kubectl apply -f k8s/deployment.yaml --validate=false
                         kubectl apply -f k8s/service.yaml --validate=false
-                        kubectl set image deployment/java-app java-app=${DOCKER_IMAGE}:${DOCKER_TAG} --record
+
+                        # Update deployment image safely
+                        kubectl set image deployment/java-app java-app=${DOCKER_IMAGE}:${DOCKER_TAG}
+
+                        # Wait for deployment rollout
                         kubectl rollout status deployment/java-app
+
                         echo "✅ Deployment complete!"
                     """
                 }
