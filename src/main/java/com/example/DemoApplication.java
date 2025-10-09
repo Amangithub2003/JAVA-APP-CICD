@@ -15,11 +15,11 @@ public class DemoApplication {
     
     @GetMapping("/")
     public String home() {
-        return "Hello from Java DevOps Pipeline! updated again !";
+        return "Hello from Java DevOps Pipeline! Everything is good ";
     }
     
     @GetMapping("/health")
     public String health() {
-        return "Application is healthy! updated !";
+        return "Application is healthy! now check";
     }
 }
