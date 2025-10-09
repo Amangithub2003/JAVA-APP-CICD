@@ -4,6 +4,7 @@ WORKDIR /app
 
 COPY target/*.jar app.jar
 
+# Avoid conflicts: use port 8081
 EXPOSE 8081
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \

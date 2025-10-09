@@ -60,7 +60,7 @@ pipeline {
             steps {
                 script {
                     try {
-                        timeout(time: 3, unit: 'MINUTES') {
+                        timeout(time: 10, unit: 'MINUTES') {
                             def qg = waitForQualityGate abortPipeline: true
                             echo "✅ SonarQube Quality Gate status: ${qg.status}"
                         }
@@ -71,12 +71,11 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image in Minikube') {
+        stage('Build Docker Image') {
             steps {
                 script {
                     sh '''
-                        echo "🐳 Building Docker image inside Minikube..."
-                        eval $(minikube -p minikube docker-env)
+                        echo "🐳 Building Docker image on Jenkins agent..."
                         docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
                         docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
                     '''
@@ -99,32 +98,31 @@ pipeline {
             }
         }
 
-        stage('Deploy to Kubernetes (via Minikube)') {
+        stage('Deploy to Kubernetes') {
             steps {
-                script {
-                    sh '''
-                        echo "✅ Deploying ${DOCKER_IMAGE}:${DOCKER_TAG} to Kubernetes"
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                    script {
+                        sh '''
+                            echo "✅ Using kubeconfig from Jenkins credentials"
 
-                        # Start Minikube if profile missing or not running
-                        if ! minikube profile list | grep -q "minikube"; then
-                            echo "⚙️ Minikube profile not found. Starting Minikube..."
-                            minikube start --driver=docker --profile=minikube
-                        elif ! minikube status | grep -q "Running"; then
-                            echo "⚙️ Minikube not running. Starting Minikube..."
-                            minikube start --driver=docker --profile=minikube
-                        fi
+                            # Test Kubernetes connectivity
+                            kubectl get nodes
 
-                        # Docker env for Minikube
-                        eval $(minikube -p minikube docker-env)
+                            # Apply manifests
+                            kubectl apply -f k8s/deployment.yaml --validate=false
+                            kubectl apply -f k8s/service.yaml --validate=false
 
-                        # Apply manifests and set image
-                        minikube kubectl -- apply -f k8s/deployment.yaml --validate=false
-                        minikube kubectl -- apply -f k8s/service.yaml --validate=false
-                        minikube kubectl -- set image deployment/java-app java-app=${DOCKER_IMAGE}:${DOCKER_TAG} --record
-                        minikube kubectl -- rollout status deployment/java-app
+                            # Update deployment image
+                            kubectl set image deployment/java-app java-app=${DOCKER_IMAGE}:${DOCKER_TAG} --record
 
-                        echo "✅ Deployment successful!"
-                    '''
+                            # Wait for rollout
+                            kubectl rollout status deployment/java-app
+
+                            # Print NodePort URL
+                            echo "🚀 App should be available at:"
+                            kubectl get svc java-app-service -o jsonpath='{.spec.clusterIP}{"\n"}'
+                        '''
+                    }
                 }
             }
         }
