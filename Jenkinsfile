@@ -57,7 +57,7 @@ pipeline {
             steps {
                 script {
                     try {
-                        timeout(time: 2, unit: 'MINUTES') {
+                        timeout(time: 3, unit: 'MINUTES') {
                             def qg = waitForQualityGate abortPipeline: true
                             echo "✅ SonarQube Quality Gate: ${qg.status}"
                         }
@@ -82,6 +82,7 @@ pipeline {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     sh """
+                        echo "🔐 Logging in to DockerHub..."
                         echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
                         docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
                         docker push ${DOCKER_IMAGE}:latest
@@ -100,6 +101,7 @@ pipeline {
                         kubectl apply -f k8s/service.yaml --validate=false
                         kubectl set image deployment/java-app java-app=${DOCKER_IMAGE}:${DOCKER_TAG} --record
                         kubectl rollout status deployment/java-app
+                        echo "✅ Deployment complete!"
                     """
                 }
             }

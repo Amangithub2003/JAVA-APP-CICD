@@ -8,6 +8,6 @@ spec:
     app: java-app
   ports:
     - protocol: TCP
-      port: 8081
-      targetPort: 8081
-      nodePort: 30400   # Changed to avoid conflict with other services
+      port: 8081        # Service port inside cluster
+      targetPort: 8081  # Matches containerPort
+      nodePort: 30400   # Changed from 30080 to 30400 (free)
