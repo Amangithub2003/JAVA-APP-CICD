@@ -36,7 +36,11 @@ pipeline {
                     steps {
                         sh 'mvn test'
                     }
-                    post { always { junit 'target/surefire-reports/*.xml' } }
+                    post {
+                        always {
+                            junit 'target/surefire-reports/*.xml'
+                        }
+                    }
                 }
 
                 stage('SonarQube Analysis') {
@@ -63,7 +67,7 @@ pipeline {
                             def qg = waitForQualityGate abortPipeline: true
                             echo "✅ SonarQube Quality Gate: ${qg.status}"
                         }
-                    } catch(err) {
+                    } catch (err) {
                         echo "⚠️ Quality Gate check timed out, continuing..."
                     }
                 }
@@ -98,9 +102,9 @@ pipeline {
             steps {
                 script {
                     sh """
-                        echo "🧹 Stopping and removing old container (if exists)..."
-                        docker stop ${LOCAL_CONTAINER_NAME} || true
-                        docker rm ${LOCAL_CONTAINER_NAME} || true
+                        echo "🧹 Removing old container (if exists)..."
+                        # Yeh line purane running or stopped container ko forcefully hata degi
+                        docker ps -aq --filter "name=${LOCAL_CONTAINER_NAME}" | xargs -r docker rm -f || true
 
                         echo "🚀 Running new container..."
                         docker run -d --name ${LOCAL_CONTAINER_NAME} -p ${LOCAL_PORT}:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}
@@ -110,6 +114,9 @@ pipeline {
 
                         echo "🔍 Checking app health..."
                         curl -s http://localhost:${LOCAL_PORT}/actuator/health || echo "⚠️ Health endpoint not reachable yet!"
+
+                        echo "✅ Currently running containers:"
+                        docker ps
                     """
                 }
             }
@@ -129,7 +136,7 @@ pipeline {
                                 echo "✅ Kubernetes deployment complete!"
                             """
                         }
-                    } catch(err) {
+                    } catch (err) {
                         echo "⚠️ Kubernetes deploy failed or skipped. Continuing..."
                         currentBuild.result = 'UNSTABLE'
                     }
