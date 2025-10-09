@@ -99,26 +99,30 @@ pipeline {
             }
         }
 
-        stage('Deploy to Kubernetes') {
+        stage('Deploy to Kubernetes (via Minikube)') {
             steps {
                 script {
-                    withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                        sh '''
-                            echo "✅ Using kubeconfig from Jenkins credentials"
-                            export KUBECONFIG=$KUBECONFIG
+                    sh '''
+                        echo "✅ Deploying ${DOCKER_IMAGE}:${DOCKER_TAG} to Kubernetes using Minikube context"
+                        eval $(minikube -p minikube docker-env)
 
-                            echo "🔍 Checking Kubernetes connection..."
-                            kubectl cluster-info
+                        # Check Minikube connectivity
+                        echo "🔍 Checking Minikube status..."
+                        minikube status || (echo "❌ Minikube is not running!" && exit 1)
 
-                            echo "🚀 Deploying ${DOCKER_IMAGE}:${DOCKER_TAG} to Kubernetes..."
-                            kubectl set image deployment/java-app java-app=${DOCKER_IMAGE}:${DOCKER_TAG} --record || \
-                                kubectl apply -f k8s/deployment.yaml --validate=false
-                            kubectl apply -f k8s/service.yaml --validate=false
+                        # Apply manifests
+                        echo "🚀 Applying Kubernetes manifests..."
+                        minikube kubectl -- apply -f k8s/deployment.yaml --validate=false
+                        minikube kubectl -- apply -f k8s/service.yaml --validate=false
 
-                            echo "⏳ Waiting for rollout..."
-                            kubectl rollout status deployment/java-app
-                        '''
-                    }
+                        # Update deployment image
+                        echo "🔁 Updating deployment image..."
+                        minikube kubectl -- set image deployment/java-app java-app=${DOCKER_IMAGE}:${DOCKER_TAG} --record
+
+                        # Wait for rollout
+                        echo "⏳ Waiting for rollout to complete..."
+                        minikube kubectl -- rollout status deployment/java-app
+                    '''
                 }
             }
         }
