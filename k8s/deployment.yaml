@@ -18,7 +18,7 @@ spec:
       - name: java-app
         image: amandock8252/java-app:latest
         ports:
-        - containerPort: 8081
+        - containerPort: 8081   # Changed from 8080 to 8081
         livenessProbe:
           httpGet:
             path: /actuator/health

@@ -6,6 +6,7 @@ pipeline {
         DOCKER_TAG = "${BUILD_NUMBER}"
         SONAR_PROJECT_KEY = "java-app"
         SONAR_AUTH_TOKEN = credentials('sonarqube-token')
+        KUBECONFIG_CRED = 'kubeconfig'
     }
 
     tools {
@@ -33,11 +34,7 @@ pipeline {
                     steps {
                         sh 'mvn test'
                     }
-                    post {
-                        always {
-                            junit 'target/surefire-reports/*.xml'
-                        }
-                    }
+                    post { always { junit 'target/surefire-reports/*.xml' } }
                 }
 
                 stage('SonarQube Analysis') {
@@ -62,10 +59,10 @@ pipeline {
                     try {
                         timeout(time: 2, unit: 'MINUTES') {
                             def qg = waitForQualityGate abortPipeline: true
-                            echo "✅ SonarQube Quality Gate status: ${qg.status}"
+                            echo "✅ SonarQube Quality Gate: ${qg.status}"
                         }
                     } catch(err) {
-                        echo "⚠️ Quality Gate check timed out, continuing pipeline..."
+                        echo "⚠️ Quality Gate check timed out, continuing..."
                     }
                 }
             }
@@ -73,19 +70,17 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    sh """
-                        echo "🐳 Building Docker image..."
-                        docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
-                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
-                    """
-                }
+                sh """
+                    echo "🐳 Building Docker image..."
+                    docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
+                    docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
+                """
             }
         }
 
         stage('Push to DockerHub') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     sh """
                         echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
                         docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
@@ -98,30 +93,22 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             steps {
-                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
-                    script {
-                        sh """
-                            echo "✅ Deploying ${DOCKER_IMAGE}:${DOCKER_TAG} to Kubernetes"
-                            kubectl apply -f k8s/deployment.yaml --validate=false
-                            kubectl apply -f k8s/service.yaml --validate=false
-                            kubectl set image deployment/java-app java-app=${DOCKER_IMAGE}:${DOCKER_TAG} --record
-                            kubectl rollout status deployment/java-app
-                        """
-                    }
+                withCredentials([file(credentialsId: "${KUBECONFIG_CRED}", variable: 'KUBECONFIG')]) {
+                    sh """
+                        echo "🚀 Deploying to Kubernetes..."
+                        kubectl apply -f k8s/deployment.yaml --validate=false
+                        kubectl apply -f k8s/service.yaml --validate=false
+                        kubectl set image deployment/java-app java-app=${DOCKER_IMAGE}:${DOCKER_TAG} --record
+                        kubectl rollout status deployment/java-app
+                    """
                 }
             }
         }
     }
 
     post {
-        success {
-            echo '✅ Pipeline executed successfully!'
-        }
-        failure {
-            echo '❌ Pipeline failed!'
-        }
-        always {
-            cleanWs()
-        }
+        success { echo '✅ Pipeline executed successfully!' }
+        failure { echo '❌ Pipeline failed!' }
+        always { cleanWs() }
     }
 }
