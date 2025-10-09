@@ -6,6 +6,9 @@ pipeline {
         DOCKER_TAG = "${BUILD_NUMBER}"
         SONAR_PROJECT_KEY = "java-app"
         SONAR_AUTH_TOKEN = credentials('sonarqube-token')
+        KUBECONFIG_CRED = 'kubeconfig'
+        LOCAL_CONTAINER_NAME = "java-app-local"
+        LOCAL_PORT = 30080
     }
 
     tools {
@@ -91,17 +94,51 @@ pipeline {
             }
         }
 
-        stage('Run Docker Container') {
+        stage('Run Local Docker Container') {
             steps {
-                sh """
-                    echo "🚀 Deploying Docker container..."
-                    # Stop & remove old container if exists
-                    docker stop java-app || true
-                    docker rm java-app || true
-                    # Run new container in background with auto-restart
-                    docker run -d --name java-app --restart unless-stopped -p 30080:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}
-                    echo "✅ Container running at http://localhost:30080"
-                """
+                script {
+                    // Stop & remove old container if exists
+                    sh """
+                        if [ \$(docker ps -a -q -f name=${LOCAL_CONTAINER_NAME}) ]; then
+                            echo "🛑 Stopping old container..."
+                            docker stop ${LOCAL_CONTAINER_NAME}
+                            docker rm ${LOCAL_CONTAINER_NAME}
+                        fi
+
+                        echo "🚀 Running new container..."
+                        docker run -d --name ${LOCAL_CONTAINER_NAME} -p ${LOCAL_PORT}:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}
+                    """
+                }
+            }
+        }
+
+        stage('Deploy to Kubernetes (Optional)') {
+            steps {
+                script {
+                    def deploySkipped = false
+                    try {
+                        withCredentials([file(credentialsId: "${KUBECONFIG_CRED}", variable: 'KUBECONFIG')]) {
+                            sh """
+                                echo "🚀 Deploying to Kubernetes..."
+                                kubectl apply -f k8s/deployment.yaml --validate=false
+                                kubectl apply -f k8s/service.yaml --validate=false
+                                kubectl set image deployment/java-app java-app=${DOCKER_IMAGE}:${DOCKER_TAG} --record
+                                kubectl rollout status deployment/java-app
+                                echo "✅ Kubernetes deployment complete!"
+                            """
+                        }
+                    } catch(err) {
+                        echo "⚠️ Kubernetes deploy failed or skipped. Check kubeconfig/permissions."
+                        deploySkipped = true
+                    }
+
+                    if(deploySkipped) {
+                        currentBuild.result = 'UNSTABLE'
+                        echo "⚠️ Kubernetes deployment skipped. Pipeline still successful."
+                    } else {
+                        echo "✅ Kubernetes deployment succeeded."
+                    }
+                }
             }
         }
     }
