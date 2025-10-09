@@ -19,7 +19,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', 
+                git branch: 'main',
                     url: 'https://github.com/Amangithub2003/JAVA-APP-CICD.git'
             }
         }
@@ -98,11 +98,12 @@ pipeline {
             steps {
                 script {
                     sh """
-                        echo "🧹 Cleaning old container (if exists)..."
-                        docker ps -aq --filter "name=${LOCAL_CONTAINER_NAME}" | grep -q . && docker rm -f ${LOCAL_CONTAINER_NAME} || true
+                        echo "🧹 Stopping and removing old container (if exists)..."
+                        docker stop ${LOCAL_CONTAINER_NAME} || true
+                        docker rm ${LOCAL_CONTAINER_NAME} || true
 
                         echo "🚀 Running new container..."
-                        docker run -d -p ${LOCAL_PORT}:8080 --name ${LOCAL_CONTAINER_NAME} ${DOCKER_IMAGE}:latest
+                        docker run -d --name ${LOCAL_CONTAINER_NAME} -p ${LOCAL_PORT}:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}
 
                         echo "⏳ Waiting for app to start..."
                         sleep 10
@@ -129,7 +130,7 @@ pipeline {
                             """
                         }
                     } catch(err) {
-                        echo "⚠️ Kubernetes deploy failed or skipped. Check kubeconfig/permissions."
+                        echo "⚠️ Kubernetes deploy failed or skipped. Continuing..."
                         currentBuild.result = 'UNSTABLE'
                     }
                 }
@@ -140,9 +141,14 @@ pipeline {
     post {
         success {
             echo '✅ Pipeline executed successfully!'
+            echo "🔗 Access app at: http://localhost:${LOCAL_PORT}"
             sh "curl -s http://localhost:${LOCAL_PORT}/actuator/health || true"
         }
-        failure { echo '❌ Pipeline failed!' }
-        always { cleanWs() }
+        failure {
+            echo '❌ Pipeline failed!'
+        }
+        always {
+            cleanWs()
+        }
     }
 }
