@@ -104,11 +104,18 @@ pipeline {
                 script {
                     sh '''
                         echo "✅ Deploying ${DOCKER_IMAGE}:${DOCKER_TAG} to Kubernetes using Minikube context"
-                        eval $(minikube -p minikube docker-env)
 
-                        # Check Minikube connectivity
-                        echo "🔍 Checking Minikube status..."
-                        minikube status || (echo "❌ Minikube is not running!" && exit 1)
+                        # Auto-start Minikube if not running
+                        if ! minikube profile list | grep -q "minikube"; then
+                            echo "⚙️ Starting Minikube..."
+                            minikube start --driver=docker --profile=minikube
+                        elif ! minikube status | grep -q "Running"; then
+                            echo "⚙️ Starting Minikube..."
+                            minikube start --driver=docker --profile=minikube
+                        fi
+
+                        # Set Docker environment to Minikube
+                        eval $(minikube -p minikube docker-env)
 
                         # Apply manifests
                         echo "🚀 Applying Kubernetes manifests..."
