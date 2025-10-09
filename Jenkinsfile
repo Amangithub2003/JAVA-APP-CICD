@@ -6,7 +6,6 @@ pipeline {
         DOCKER_TAG = "${BUILD_NUMBER}"
         SONAR_PROJECT_KEY = "java-app"
         SONAR_AUTH_TOKEN = credentials('sonarqube-token')
-        KUBECONFIG_CRED = 'kubeconfig-credentials'
     }
 
     tools {
@@ -31,7 +30,9 @@ pipeline {
         stage('Parallel: Unit Tests & SonarQube Analysis') {
             parallel {
                 stage('Unit Tests') {
-                    steps { sh 'mvn test' }
+                    steps {
+                        sh 'mvn test'
+                    }
                     post { always { junit 'target/surefire-reports/*.xml' } }
                 }
 
@@ -90,18 +91,17 @@ pipeline {
             }
         }
 
-        stage('Deploy to Kubernetes') {
+        stage('Run Docker Container') {
             steps {
-                withCredentials([file(credentialsId: "${KUBECONFIG_CRED}", variable: 'KUBECONFIG')]) {
-                    sh """
-                        echo "🚀 Deploying to Kubernetes..."
-                        kubectl apply -f k8s/deployment.yaml --validate=false
-                        kubectl apply -f k8s/service.yaml --validate=false
-                        kubectl set image deployment/java-app java-app=${DOCKER_IMAGE}:${DOCKER_TAG}
-                        kubectl rollout status deployment/java-app
-                        echo "✅ Deployment complete!"
-                    """
-                }
+                sh """
+                    echo "🚀 Deploying Docker container..."
+                    # Stop & remove old container if exists
+                    docker stop java-app || true
+                    docker rm java-app || true
+                    # Run new container in background with auto-restart
+                    docker run -d --name java-app --restart unless-stopped -p 30080:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}
+                    echo "✅ Container running at http://localhost:30080"
+                """
             }
         }
     }
