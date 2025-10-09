@@ -60,7 +60,7 @@ pipeline {
             steps {
                 script {
                     try {
-                        timeout(time: 10, unit: 'MINUTES') {
+                        timeout(time: 2, unit: 'MINUTES') {
                             def qg = waitForQualityGate abortPipeline: true
                             echo "✅ SonarQube Quality Gate status: ${qg.status}"
                         }
@@ -74,11 +74,11 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    sh '''
-                        echo "🐳 Building Docker image on Jenkins agent..."
+                    sh """
+                        echo "🐳 Building Docker image..."
                         docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
                         docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
-                    '''
+                    """
                 }
             }
         }
@@ -86,14 +86,12 @@ pipeline {
         stage('Push to DockerHub') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                    sh '''
-                        echo "🔐 Logging in to DockerHub..."
+                    sh """
                         echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-                        echo "📤 Pushing image to DockerHub..."
                         docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
                         docker push ${DOCKER_IMAGE}:latest
                         docker logout
-                    '''
+                    """
                 }
             }
         }
@@ -102,24 +100,13 @@ pipeline {
             steps {
                 withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                     script {
-                        sh '''
-                            echo "✅ Using kubeconfig from Jenkins credentials"
-
-                            # Test Kubernetes connectivity
-                            kubectl get nodes
-
-                            # Apply manifests
+                        sh """
+                            echo "✅ Deploying ${DOCKER_IMAGE}:${DOCKER_TAG} to Kubernetes"
                             kubectl apply -f k8s/deployment.yaml --validate=false
                             kubectl apply -f k8s/service.yaml --validate=false
-
-                            # Update deployment image from DockerHub
                             kubectl set image deployment/java-app java-app=${DOCKER_IMAGE}:${DOCKER_TAG} --record
-
-                            # Wait for rollout
                             kubectl rollout status deployment/java-app
-
-                            echo "🚀 Deployment successful!"
-                        '''
+                        """
                     }
                 }
             }
