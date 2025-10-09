@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = "amandock8252/java-app"
+        DOCKER_IMAGE = "java-app"
         DOCKER_TAG = "${BUILD_NUMBER}"
         SONAR_PROJECT_KEY = "java-app"
         SONAR_AUTH_TOKEN = credentials('sonarqube-token')
@@ -71,56 +71,30 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build Docker Image in Minikube') {
             steps {
                 script {
-                    docker.build("${DOCKER_IMAGE}:${DOCKER_TAG}")
-                    docker.build("${DOCKER_IMAGE}:latest")
-                }
-            }
-        }
-
-        stage('Push to DockerHub') {
-            steps {
-                script {
-                    docker.withRegistry('https://registry.hub.docker.com', 'dockerhub-credentials') {
-                        docker.image("${DOCKER_IMAGE}:${DOCKER_TAG}").push()
-                        docker.image("${DOCKER_IMAGE}:latest").push()
-                    }
+                    // Use Minikube Docker daemon so Kubernetes can use the image directly
+                    sh '''
+                        eval $(minikube -p minikube docker-env)
+                        docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
+                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
+                    '''
                 }
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
-                withCredentials([file(credentialsId: 'kubeconfig-credentials', variable: 'KUBECONFIG')]) {
-                    script {
-                        sh '''
-                            echo "✅ Using kubeconfig from Jenkins credentials"
-
-                            # Update deployment image
-                            kubectl set image deployment/java-app java-app=${DOCKER_IMAGE}:${DOCKER_TAG} --record
-                            kubectl rollout status deployment/java-app
-
-                            # Apply service manifest
-                            kubectl apply -f k8s/service.yaml --validate=false
-
-                            # Kill old port-forward processes
-                            pkill -f "kubectl port-forward svc/java-app-service" || true
-
-                            # Find a free port starting from 30080
-                            PORT=30080
-                            while lsof -i:${PORT} >/dev/null 2>&1; do
-                                PORT=$((PORT+1))
-                            done
-
-                            # Start port-forward in background
-                            nohup kubectl port-forward svc/java-app-service ${PORT}:8080 > java-app-${PORT}.log 2>&1 &
-
-                            # Output the URL for Jenkins console
-                            echo "🌐 Application is accessible at: http://localhost:${PORT}"
-                        '''
-                    }
+                script {
+                    sh '''
+                        eval $(minikube -p minikube docker-env)
+                        echo "✅ Deploying ${DOCKER_IMAGE}:${DOCKER_TAG} to Kubernetes"
+                        sed -i "s|image:.*|image: ${DOCKER_IMAGE}:${DOCKER_TAG}|g" k8s/deployment.yaml
+                        kubectl apply -f k8s/deployment.yaml --validate=false
+                        kubectl apply -f k8s/service.yaml --validate=false
+                        kubectl rollout status deployment/java-app
+                    '''
                 }
             }
         }
