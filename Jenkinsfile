@@ -6,7 +6,6 @@ pipeline {
         DOCKER_TAG = "${BUILD_NUMBER}"
         SONAR_PROJECT_KEY = "java-app"
         SONAR_AUTH_TOKEN = credentials('sonarqube-token')
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
     }
 
     tools {
@@ -17,7 +16,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main',
+                git branch: 'main', 
                     url: 'https://github.com/Amangithub2003/JAVA-APP-CICD.git'
             }
         }
@@ -65,7 +64,7 @@ pipeline {
                             def qg = waitForQualityGate abortPipeline: true
                             echo "✅ SonarQube Quality Gate status: ${qg.status}"
                         }
-                    } catch (err) {
+                    } catch(err) {
                         echo "⚠️ Quality Gate check timed out, continuing pipeline..."
                     }
                 }
@@ -76,8 +75,8 @@ pipeline {
             steps {
                 script {
                     sh '''
+                        echo "🐳 Building Docker image inside Minikube environment..."
                         eval $(minikube -p minikube docker-env)
-                        echo "🐳 Building Docker image inside Minikube..."
                         docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
                         docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
                     '''
@@ -85,12 +84,13 @@ pipeline {
             }
         }
 
-        stage('Push Image to Docker Hub') {
+        stage('Push to DockerHub') {
             steps {
-                script {
-                    echo "📤 Pushing ${DOCKER_IMAGE}:${DOCKER_TAG} to Docker Hub..."
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     sh '''
-                        echo "${DOCKERHUB_CREDENTIALS_PSW}" | docker login -u "${DOCKERHUB_CREDENTIALS_USR}" --password-stdin
+                        echo "🔐 Logging in to DockerHub..."
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                        echo "📤 Pushing image to DockerHub..."
                         docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
                         docker push ${DOCKER_IMAGE}:latest
                         docker logout
@@ -102,13 +102,20 @@ pipeline {
         stage('Deploy to Kubernetes') {
             steps {
                 script {
-                    // Use kubeconfig credentials stored in Jenkins
-                    withKubeConfig([credentialsId: 'kubeconfig-minikube']) {
+                    withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
                         sh '''
+                            echo "✅ Using kubeconfig from Jenkins credentials"
+                            export KUBECONFIG=$KUBECONFIG
+
+                            echo "🔍 Checking Kubernetes connection..."
+                            kubectl cluster-info
+
                             echo "🚀 Deploying ${DOCKER_IMAGE}:${DOCKER_TAG} to Kubernetes..."
-                            sed -i "s|image:.*|image: ${DOCKER_IMAGE}:${DOCKER_TAG}|g" k8s/deployment.yaml
-                            kubectl apply -f k8s/deployment.yaml --validate=false
+                            kubectl set image deployment/java-app java-app=${DOCKER_IMAGE}:${DOCKER_TAG} --record || \
+                                kubectl apply -f k8s/deployment.yaml --validate=false
                             kubectl apply -f k8s/service.yaml --validate=false
+
+                            echo "⏳ Waiting for rollout..."
                             kubectl rollout status deployment/java-app
                         '''
                     }
