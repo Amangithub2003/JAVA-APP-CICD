@@ -103,14 +103,14 @@ pipeline {
             steps {
                 script {
                     sh '''
-                        echo "✅ Deploying ${DOCKER_IMAGE}:${DOCKER_TAG} to Kubernetes using Minikube context"
+                        echo "✅ Deploying ${DOCKER_IMAGE}:${DOCKER_TAG} to Kubernetes using Minikube"
 
-                        # Auto-start Minikube if not running
+                        # Auto-start Minikube if profile not found or not running
                         if ! minikube profile list | grep -q "minikube"; then
-                            echo "⚙️ Starting Minikube..."
+                            echo "⚙️ Minikube profile not found. Starting Minikube..."
                             minikube start --driver=docker --profile=minikube
                         elif ! minikube status | grep -q "Running"; then
-                            echo "⚙️ Starting Minikube..."
+                            echo "⚙️ Minikube not running. Starting Minikube..."
                             minikube start --driver=docker --profile=minikube
                         fi
 
@@ -126,9 +126,11 @@ pipeline {
                         echo "🔁 Updating deployment image..."
                         minikube kubectl -- set image deployment/java-app java-app=${DOCKER_IMAGE}:${DOCKER_TAG} --record
 
-                        # Wait for rollout
+                        # Wait for rollout to complete
                         echo "⏳ Waiting for rollout to complete..."
                         minikube kubectl -- rollout status deployment/java-app
+
+                        echo "✅ Deployment successful!"
                     '''
                 }
             }
