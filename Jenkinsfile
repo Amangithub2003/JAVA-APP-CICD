@@ -7,7 +7,7 @@ pipeline {
         SONAR_PROJECT_KEY = "java-app"
         SONAR_AUTH_TOKEN = credentials('sonarqube-token')
         KUBECONFIG_CRED = 'kubeconfig'
-        LOCAL_CONTAINER_NAME = "java-app-local"
+        LOCAL_CONTAINER_NAME = "java-app"
         LOCAL_PORT = 30080
     }
 
@@ -97,16 +97,18 @@ pipeline {
         stage('Run Local Docker Container') {
             steps {
                 script {
-                    // Stop & remove old container if exists
                     sh """
-                        if [ \$(docker ps -a -q -f name=${LOCAL_CONTAINER_NAME}) ]; then
-                            echo "🛑 Stopping old container..."
-                            docker stop ${LOCAL_CONTAINER_NAME}
-                            docker rm ${LOCAL_CONTAINER_NAME}
-                        fi
+                        echo "🧹 Cleaning old container (if exists)..."
+                        docker ps -aq --filter "name=${LOCAL_CONTAINER_NAME}" | grep -q . && docker rm -f ${LOCAL_CONTAINER_NAME} || true
 
                         echo "🚀 Running new container..."
-                        docker run -d --name ${LOCAL_CONTAINER_NAME} -p ${LOCAL_PORT}:8080 ${DOCKER_IMAGE}:${DOCKER_TAG}
+                        docker run -d -p ${LOCAL_PORT}:8080 --name ${LOCAL_CONTAINER_NAME} ${DOCKER_IMAGE}:latest
+
+                        echo "⏳ Waiting for app to start..."
+                        sleep 10
+
+                        echo "🔍 Checking app health..."
+                        curl -s http://localhost:${LOCAL_PORT}/actuator/health || echo "⚠️ Health endpoint not reachable yet!"
                     """
                 }
             }
@@ -115,7 +117,6 @@ pipeline {
         stage('Deploy to Kubernetes (Optional)') {
             steps {
                 script {
-                    def deploySkipped = false
                     try {
                         withCredentials([file(credentialsId: "${KUBECONFIG_CRED}", variable: 'KUBECONFIG')]) {
                             sh """
@@ -129,14 +130,7 @@ pipeline {
                         }
                     } catch(err) {
                         echo "⚠️ Kubernetes deploy failed or skipped. Check kubeconfig/permissions."
-                        deploySkipped = true
-                    }
-
-                    if(deploySkipped) {
                         currentBuild.result = 'UNSTABLE'
-                        echo "⚠️ Kubernetes deployment skipped. Pipeline still successful."
-                    } else {
-                        echo "✅ Kubernetes deployment succeeded."
                     }
                 }
             }
@@ -144,7 +138,10 @@ pipeline {
     }
 
     post {
-        success { echo '✅ Pipeline executed successfully!' }
+        success {
+            echo '✅ Pipeline executed successfully!'
+            sh "curl -s http://localhost:${LOCAL_PORT}/actuator/health || true"
+        }
         failure { echo '❌ Pipeline failed!' }
         always { cleanWs() }
     }
