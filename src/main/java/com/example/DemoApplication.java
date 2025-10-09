@@ -15,7 +15,7 @@ public class DemoApplication {
     
     @GetMapping("/")
     public String home() {
-        return "Hello from Java DevOps Pipeline! Everything is good ";
+        return "Hello from Java DevOps Pipeline! Everything is good ! ";
     }
     
     @GetMapping("/health")
